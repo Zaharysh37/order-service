@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -23,5 +24,5 @@ public class Item {
     private String name;
 
     @Column(nullable = false)
-    private Double price;
+    private BigDecimal price;
 }
