@@ -6,7 +6,7 @@ import java.util.List;
 
 public interface ItemService {
 
-    GetItemDto crateItem(CreateItemDto createItemDto);
+    GetItemDto createItem(CreateItemDto createItemDto);
 
     GetItemDto getItemById(Long id);
 

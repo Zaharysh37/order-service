@@ -24,7 +24,7 @@ public class ItemServiceImpl implements ItemService {
 
     @Override
     @Transactional
-    public GetItemDto crateItem(CreateItemDto createItemDto) {
+    public GetItemDto createItem(CreateItemDto createItemDto) {
         Item item = createItemMapper.toEntity(createItemDto);
 
         Item savedItem = itemRepository.save(item);
