@@ -174,6 +174,7 @@ class OrderServiceImplIntegrationTest extends BaseIntegrationTest {
     void test_deleteOrder_Forbidden_IfUserServiceRejects() {
         Order order = new Order();
         order.setUserId(999L);
+        order.setStatus(Status.CREATED);
         orderRepository.save(order);
 
         stubFor(WireMock.get(urlPathEqualTo("/api/v1/users/999"))
