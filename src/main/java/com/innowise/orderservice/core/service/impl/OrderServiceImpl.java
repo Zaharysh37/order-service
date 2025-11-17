@@ -146,6 +146,7 @@ public class OrderServiceImpl implements OrderService {
     public void deleteOrder(Long id) {
         Order existingOrder = orderRepository.findById(id)
             .orElseThrow(() -> new EntityNotFoundException("Order not found: " + id));
+        userClient.getUserById(existingOrder.getUserId());
         orderRepository.deleteById(id);
     }
 }

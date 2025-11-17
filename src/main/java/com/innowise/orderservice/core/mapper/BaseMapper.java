@@ -1,6 +1,11 @@
 package com.innowise.orderservice.core.mapper;
 
 import java.util.List;
+import org.mapstruct.MapperConfig;
+import org.mapstruct.MappingTarget;
+import org.mapstruct.NullValueMappingStrategy;
+import org.mapstruct.NullValuePropertyMappingStrategy;
+import org.mapstruct.ReportingPolicy;
 
 @MapperConfig(
     componentModel = "spring",

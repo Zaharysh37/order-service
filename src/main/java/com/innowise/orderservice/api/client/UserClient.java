@@ -10,16 +10,20 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 
-@FeignClient(name = "user-service")
+@FeignClient(
+    name = "user-service",
+    url = "${user.service.url:http://localhost:8081}",
+    path = "/api/users"
+)
 public interface UserClient {
 
     Logger logger = LoggerFactory.getLogger(UserClient.class);
 
-    @GetMapping("api/users/email")
+    @GetMapping("/email")
     @CircuitBreaker(name = "userService", fallbackMethod = "fallbackGetUserByEmail")
     GetUserDto getUserByEmail(@RequestParam("email") String email);
 
-    @GetMapping("api/users/{id}")
+    @GetMapping("/{id}")
     @CircuitBreaker(name = "userService", fallbackMethod = "fallbackGetUserById")
     GetUserDto getUserById(@PathVariable("id") Long id);
 
