@@ -1,5 +1,6 @@
 package com.innowise.orderservice.api.client;
 
+import feign.FeignException;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import java.time.LocalDate;
 import java.util.Collections;
@@ -29,10 +30,18 @@ public interface UserClient {
 
     default GetUserDto fallbackGetUserByEmail(String email, Throwable throwable) {
         logger.warn("UserService (by email) is unavailable. Fallback executed.", throwable.getMessage());
+        System.err.println("!!! FEIGN FALLBACK ERROR: " + throwable.getMessage());
+        throwable.printStackTrace();
         return new GetUserDto(-1L, "User", "Unavailable", LocalDate.MAX, email, Collections.emptyList());
     }
 
     default GetUserDto fallbackGetUserById(Long id, Throwable throwable) {
+        if (throwable instanceof FeignException.Forbidden) {
+            throw (FeignException.Forbidden) throwable;
+        }
+
+        System.err.println("!!! FEIGN FALLBACK ERROR: " + throwable.getMessage());
+        throwable.printStackTrace();
         logger.warn("UserService (by id) is unavailable. Fallback executed.", throwable.getMessage());
         return new GetUserDto(id, "User", "Unavailable", LocalDate.MAX, "N/A", Collections.emptyList());
     }

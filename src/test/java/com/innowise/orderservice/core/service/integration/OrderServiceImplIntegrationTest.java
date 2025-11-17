@@ -17,10 +17,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import org.springframework.http.MediaType;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.annotation.DirtiesContext;
 
@@ -29,7 +26,6 @@ import java.util.List;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.mock;
 
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class OrderServiceImplIntegrationTest extends BaseIntegrationTest {
@@ -46,20 +42,12 @@ class OrderServiceImplIntegrationTest extends BaseIntegrationTest {
         itemRepository.deleteAll();
     }
 
-    @TestConfiguration
-    static class TestSecurityConfiguration {
-        @Bean
-        public JwtDecoder jwtDecoder() {
-            return mock(JwtDecoder.class);
-        }
-    }
-
     private CreateItemDto createTestItemDto() {
         return new CreateItemDto("MacBook", new BigDecimal("2000.00"));
     }
 
     private void stubUserServiceByEmail(String email, Long userId) {
-        stubFor(WireMock.get(urlPathEqualTo("/api/v1/users/by-email"))
+        stubFor(WireMock.get(urlPathEqualTo("/api/users/email"))
             .withQueryParam("email", equalTo(email))
             .willReturn(aResponse()
                 .withStatus(200)
@@ -76,7 +64,7 @@ class OrderServiceImplIntegrationTest extends BaseIntegrationTest {
     }
 
     private void stubUserServiceById(Long userId) {
-        stubFor(WireMock.get(urlPathEqualTo("/api/v1/users/" + userId))
+        stubFor(WireMock.get(urlPathEqualTo("/api/users/" + userId))
             .willReturn(aResponse()
                 .withStatus(200)
                 .withHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)
@@ -177,7 +165,7 @@ class OrderServiceImplIntegrationTest extends BaseIntegrationTest {
         order.setStatus(Status.CREATED);
         orderRepository.save(order);
 
-        stubFor(WireMock.get(urlPathEqualTo("/api/v1/users/999"))
+        stubFor(WireMock.get(urlPathEqualTo("/api/users/999"))
             .willReturn(aResponse().withStatus(403)));
 
         assertThrows(org.springframework.security.access.AccessDeniedException.class, () -> {

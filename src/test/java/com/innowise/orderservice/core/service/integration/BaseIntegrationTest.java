@@ -1,10 +1,12 @@
 package com.innowise.orderservice.core.service.integration;
 
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.cloud.contract.wiremock.AutoConfigureWireMock;
-import org.springframework.context.annotation.Import;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.TestPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -12,14 +14,20 @@ import org.testcontainers.utility.DockerImageName;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Testcontainers
-@AutoConfigureWireMock(port = 0)
-@Import(TestSecurityConfig.class)
+@AutoConfigureWireMock(port = 9561)
+@TestPropertySource(properties = {
+    "user.service.url=http://localhost:9561",
+    "spring.cloud.discovery.enabled=false"
+})
 public abstract class BaseIntegrationTest {
 
     @Container
     static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(
         DockerImageName.parse("postgres:15-alpine")
     );
+
+    @MockBean
+    protected JwtDecoder jwtDecoder;
 
     @DynamicPropertySource
     static void setProperties(DynamicPropertyRegistry registry) {
@@ -30,8 +38,5 @@ public abstract class BaseIntegrationTest {
 
         registry.add("spring.liquibase.enabled", () -> "true");
         registry.add("spring.liquibase.change-log", () -> "classpath:db/changelog/db.changelog-master.xml");
-
-        registry.add("spring.cloud.openfeign.client.config.user-service.url",
-            () -> "http://localhost:${wiremock.server.port}");
     }
 }

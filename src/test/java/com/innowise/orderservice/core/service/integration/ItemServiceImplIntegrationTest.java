@@ -36,14 +36,6 @@ class ItemServiceImplIntegrationTest extends BaseIntegrationTest {
         itemRepository.deleteAll();
     }
 
-    @TestConfiguration
-    static class TestSecurityConfiguration {
-        @Bean
-        public JwtDecoder jwtDecoder() {
-            return mock(JwtDecoder.class);
-        }
-    }
-
     @Test
     @WithMockUser(roles = "ADMIN")
     public void test_createItem_Success_Admin() {

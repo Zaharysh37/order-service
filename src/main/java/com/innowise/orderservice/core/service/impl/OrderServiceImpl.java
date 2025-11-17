@@ -146,7 +146,13 @@ public class OrderServiceImpl implements OrderService {
     public void deleteOrder(Long id) {
         Order existingOrder = orderRepository.findById(id)
             .orElseThrow(() -> new EntityNotFoundException("Order not found: " + id));
-        userClient.getUserById(existingOrder.getUserId());
+
+        try {
+            userClient.getUserById(existingOrder.getUserId());
+        } catch (feign.FeignException.Forbidden e) {
+            throw new org.springframework.security.access.AccessDeniedException("Access denied: You are not the owner");
+        }
+
         orderRepository.deleteById(id);
     }
 }
