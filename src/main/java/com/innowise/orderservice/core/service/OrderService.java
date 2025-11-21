@@ -4,6 +4,8 @@ import com.innowise.orderservice.api.dto.order.CreateOrderDto;
 import com.innowise.orderservice.api.dto.order.GetOrderDto;
 import com.innowise.orderservice.core.entity.Status;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 public interface OrderService {
 
@@ -11,11 +13,11 @@ public interface OrderService {
 
     GetOrderDto getOrderById(Long id);
 
-    List<GetOrderDto> getOrdersByIds(List<Long> ids);
+    Page<GetOrderDto> getOrdersByIds(List<Long> ids, Pageable pageable);
 
-    List<GetOrderDto> getOrdersByStatuses(List<Status> statuses);
+    Page<GetOrderDto> getOrdersByStatuses(List<Status> statuses, Pageable pageable);
 
-    List<GetOrderDto> getAllOrders();
+    Page<GetOrderDto> getAllOrders(Pageable pageable);
 
     GetOrderDto updateOrderStatus(Long id, Status status);
 

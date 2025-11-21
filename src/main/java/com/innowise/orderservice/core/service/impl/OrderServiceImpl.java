@@ -11,13 +11,15 @@ import com.innowise.orderservice.core.entity.Item;
 import com.innowise.orderservice.core.entity.Order;
 import com.innowise.orderservice.core.entity.OrderItem;
 import com.innowise.orderservice.core.entity.Status;
-import com.innowise.orderservice.core.mapper.orderitemmapper.GetOrderItemMapper;
+import com.innowise.orderservice.core.mapper.order.GetOrderDtoWithoutUserMapper;
 import com.innowise.orderservice.core.service.OrderService;
 import jakarta.persistence.EntityNotFoundException;
-import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,7 +31,7 @@ public class OrderServiceImpl implements OrderService {
     private final OrderRepository orderRepository;
     private final ItemRepository itemRepository;
     private final UserClient userClient;
-    private final GetOrderItemMapper getOrderItemMapper;
+    private final GetOrderDtoWithoutUserMapper getOrderDtoWithoutUserMapper;
 
     @Override
     @Transactional
@@ -60,10 +62,7 @@ public class OrderServiceImpl implements OrderService {
         Order savedOrder = orderRepository.save(order);
 
         return new GetOrderDto(
-            savedOrder.getId(),
-            savedOrder.getStatus(),
-            savedOrder.getCreationDate(),
-            new HashSet<>(getOrderItemMapper.toDtos(savedOrder.getOrderItems())),
+            getOrderDtoWithoutUserMapper.toDto(savedOrder),
             getUserDto
         );
     }
@@ -77,48 +76,51 @@ public class OrderServiceImpl implements OrderService {
         GetUserDto getUserDto = userClient.getUserById(order.getUserId());
 
         return new GetOrderDto(
-            order.getId(),
-            order.getStatus(),
-            order.getCreationDate(),
-            new HashSet<>(getOrderItemMapper.toDtos(order.getOrderItems())),
+            getOrderDtoWithoutUserMapper.toDto(order),
             getUserDto
         );
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<GetOrderDto> getOrdersByIds(List<Long> ids) {
-        List<Order> orders = orderRepository.findAllByIdInOrderByCreationDateDesc(ids);
+    public Page<GetOrderDto> getOrdersByIds(List<Long> ids, Pageable pageable) {
+        Page<Order> orders = orderRepository.findAllByIdIn(ids, pageable);
         return mapOrdersToGetDtos(orders);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<GetOrderDto> getOrdersByStatuses(List<Status> statuses) {
-        List<Order> orders = orderRepository.findAllByStatusInOrderByCreatedAtDesc(statuses);
+    public Page<GetOrderDto> getOrdersByStatuses(List<Status> statuses, Pageable pageable) {
+        Page<Order> orders = orderRepository.findAllByStatusIn(statuses, pageable);
         return mapOrdersToGetDtos(orders);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<GetOrderDto> getAllOrders() {
-        List<Order> orders = orderRepository.findAll();
+    public Page<GetOrderDto> getAllOrders(Pageable pageable) {
+        Page<Order> orders = orderRepository.findAll(pageable);
         return mapOrdersToGetDtos(orders);
     }
 
-    private List<GetOrderDto> mapOrdersToGetDtos(List<Order> orders) {
-        return orders.stream()
-            .map(order -> {
-                GetUserDto getUserDto = userClient.getUserById(order.getUserId());
+    private Page<GetOrderDto> mapOrdersToGetDtos(Page<Order> orders) {
+        if (orders.isEmpty()) return Page.empty(orders.getPageable());
+
+        List<GetUserDto> getUserDtos = userClient.getAllById(
+            orders.getContent().stream()
+                .map(Order::getUserId)
+                .collect(Collectors.toList()));
+
+        Map<Long, GetUserDto> getUserDtosMap = getUserDtos.stream()
+            .collect(Collectors.toMap(
+                GetUserDto::id, dto -> dto
+            ));
+
+        return orders.map(order -> {
                 return new GetOrderDto(
-                    order.getId(),
-                    order.getStatus(),
-                    order.getCreationDate(),
-                    new HashSet<>(getOrderItemMapper.toDtos(order.getOrderItems())),
-                    getUserDto
+                    getOrderDtoWithoutUserMapper.toDto(order),
+                    getUserDtosMap.get(order.getUserId())
                 );
-                })
-            .collect(Collectors.toList());
+            });
     }
 
     @Override
@@ -133,10 +135,7 @@ public class OrderServiceImpl implements OrderService {
         GetUserDto getUserDto = userClient.getUserById(savedOrder.getUserId());
 
         return new GetOrderDto(
-            savedOrder.getId(),
-            savedOrder.getStatus(),
-            savedOrder.getCreationDate(),
-            new HashSet<>(getOrderItemMapper.toDtos(savedOrder.getOrderItems())),
+            getOrderDtoWithoutUserMapper.toDto(savedOrder),
             getUserDto
         );
     }
@@ -147,11 +146,7 @@ public class OrderServiceImpl implements OrderService {
         Order existingOrder = orderRepository.findById(id)
             .orElseThrow(() -> new EntityNotFoundException("Order not found: " + id));
 
-        try {
-            userClient.getUserById(existingOrder.getUserId());
-        } catch (feign.FeignException.Forbidden e) {
-            throw new org.springframework.security.access.AccessDeniedException("Access denied: You are not the owner");
-        }
+        userClient.getUserById(existingOrder.getUserId());
 
         orderRepository.deleteById(id);
     }

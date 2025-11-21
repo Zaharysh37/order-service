@@ -3,18 +3,19 @@ package com.innowise.orderservice.core.dao;
 import com.innowise.orderservice.core.entity.Order;
 import com.innowise.orderservice.core.entity.Status;
 import java.util.Collection;
-import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface OrderRepository extends JpaRepository<Order, Long> {
 
-    List<Order> findAllByIdInOrderByCreationDateDesc(Collection<Long> ids);
+    Page<Order> findAllByIdIn(Collection<Long> ids, Pageable pageable);
 
-    @Query("SELECT o FROM Order o WHERE o.status IN :statuses ORDER BY o.creationDate DESC")
-    List<Order> findAllByStatusInOrderByCreatedAtDesc(@Param("statuses")Collection<Status> statuses);
+    @Query("SELECT o FROM Order o WHERE o.status IN :statuses")
+    Page<Order> findAllByStatusIn(@Param("statuses")Collection<Status> statuses, Pageable pageable);
 
-    @Query(value = "SELECT o FROM orders o WHERE o.user_id = :userId ORDER BY o.creation_date DESC", nativeQuery = true)
-    List<Order> findAllByUserIdOrderByCreatedDesc(@Param("userId")Long userId);
+    @Query(value = "SELECT o FROM orders o WHERE o.user_id = :userId", nativeQuery = true)
+    Page<Order> findAllByUserId(@Param("userId")Long userId, Pageable pageable);
 }

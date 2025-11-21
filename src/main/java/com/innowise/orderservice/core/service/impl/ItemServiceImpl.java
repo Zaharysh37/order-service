@@ -10,6 +10,8 @@ import com.innowise.orderservice.core.service.ItemService;
 import jakarta.persistence.EntityNotFoundException;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,9 +44,9 @@ public class ItemServiceImpl implements ItemService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<GetItemDto> getAllItems() {
-        List<Item> items = itemRepository.findAll();
-        return getItemMapper.toDtos(items);
+    public Page<GetItemDto> getAllItems(Pageable pageable) {
+        Page<Item> items = itemRepository.findAll(pageable);
+        return items.map(getItemMapper::toDto);
     }
 
     @Override

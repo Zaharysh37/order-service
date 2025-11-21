@@ -3,8 +3,9 @@ package com.innowise.orderservice.api.controller;
 import com.innowise.orderservice.api.dto.item.CreateItemDto;
 import com.innowise.orderservice.api.dto.item.GetItemDto;
 import com.innowise.orderservice.core.service.ItemService;
-import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -38,8 +39,8 @@ public class ItemController {
     }
 
     @GetMapping
-    public ResponseEntity<List<GetItemDto>> getAllItems() {
-        List<GetItemDto> getItemDto = itemService.getAllItems();
+    public ResponseEntity<Page<GetItemDto>> getAllItems(Pageable pageable) {
+        Page<GetItemDto> getItemDto = itemService.getAllItems(pageable);
         return new ResponseEntity<>(getItemDto, HttpStatus.OK);
     }
 

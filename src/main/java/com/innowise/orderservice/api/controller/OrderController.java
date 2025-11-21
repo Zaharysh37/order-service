@@ -2,12 +2,13 @@ package com.innowise.orderservice.api.controller;
 
 import com.innowise.orderservice.api.dto.order.CreateOrderDto;
 import com.innowise.orderservice.api.dto.order.GetOrderDto;
-import com.innowise.orderservice.core.dao.OrderRepository;
 import com.innowise.orderservice.core.entity.Status;
 import com.innowise.orderservice.core.service.OrderService;
 import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -26,18 +27,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class OrderController {
 
     private final OrderService orderService;
-    private final OrderRepository orderRepository;
 
     @PostMapping
-    public ResponseEntity<GetOrderDto> createOrder(@Valid @RequestBody
-                                                       CreateOrderDto order) {
+    public ResponseEntity<GetOrderDto> createOrder(@Valid @RequestBody CreateOrderDto order) {
         GetOrderDto createdOrder = orderService.createOrder(order);
         return new ResponseEntity<>(createdOrder, HttpStatus.CREATED);
     }
 
     @GetMapping
-    public ResponseEntity<List<GetOrderDto>> getAllOrders() {
-        List<GetOrderDto> orders = orderService.getAllOrders();
+    public ResponseEntity<Page<GetOrderDto>> getAllOrders(Pageable pageable) {
+        Page<GetOrderDto> orders = orderService.getAllOrders(pageable);
         return new ResponseEntity<>(orders, HttpStatus.OK);
     }
 
@@ -48,14 +47,16 @@ public class OrderController {
     }
 
     @GetMapping("/by-ids")
-    public ResponseEntity<List<GetOrderDto>> getOrdersByIds(@RequestParam("ids") List<Long> ids) {
-        List<GetOrderDto> orders = orderService.getOrdersByIds(ids);
+    public ResponseEntity<Page<GetOrderDto>> getOrdersByIds(@RequestParam("ids") List<Long> ids,
+                                                            Pageable pageable) {
+        Page<GetOrderDto> orders = orderService.getOrdersByIds(ids, pageable);
         return new ResponseEntity<>(orders, HttpStatus.OK);
     }
 
     @GetMapping("/by-status")
-    public ResponseEntity<List<GetOrderDto>> getOrdersByEmail(@RequestBody List<Status> statuses) {
-        List<GetOrderDto> orders = orderService.getOrdersByStatuses(statuses);
+    public ResponseEntity<Page<GetOrderDto>> getOrdersByEmail(@RequestBody List<Status> statuses,
+                                                              Pageable pageable) {
+        Page<GetOrderDto> orders = orderService.getOrdersByStatuses(statuses, pageable);
         return new ResponseEntity<>(orders, HttpStatus.OK);
     }
 
