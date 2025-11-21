@@ -13,11 +13,13 @@ import com.innowise.orderservice.core.entity.Order;
 import com.innowise.orderservice.core.entity.Status;
 import com.innowise.orderservice.core.service.ItemService;
 import com.innowise.orderservice.core.service.OrderService;
+import feign.FeignException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.annotation.DirtiesContext;
 
@@ -94,10 +96,7 @@ class OrderServiceImplIntegrationTest extends BaseIntegrationTest {
     @WithMockUser(roles = "USER")
     void test_createItem_Forbidden_ForUser() {
         CreateItemDto dto = createTestItemDto();
-
-        assertThrows(org.springframework.security.access.AccessDeniedException.class, () -> {
-            itemService.createItem(dto);
-        });
+        assertThrows(AccessDeniedException.class, () -> itemService.createItem(dto));
     }
 
     @Test
@@ -119,10 +118,10 @@ class OrderServiceImplIntegrationTest extends BaseIntegrationTest {
 
         GetOrderDto result = orderService.createOrder(orderDto);
 
-        assertNotNull(result.id());
-        assertEquals(Status.CREATED, result.status());
-        assertEquals(userId, result.user().id());
-        assertEquals(1, result.orderItems().size());
+        assertNotNull(result.getOrderDtoWithoutUser().id());
+        assertEquals(Status.CREATED, result.getOrderDtoWithoutUser().status());
+        assertEquals(userId, result.getUserDto().id());
+        assertEquals(1, result.getOrderDtoWithoutUser().orderItems().size());
     }
 
     @Test
@@ -137,9 +136,9 @@ class OrderServiceImplIntegrationTest extends BaseIntegrationTest {
 
         GetOrderDto result = orderService.getOrderById(order.getId());
 
-        assertEquals(order.getId(), result.id());
-        assertEquals(55L, result.user().id());
-        assertEquals("Test", result.user().name());
+        assertEquals(order.getId(), result.getOrderDtoWithoutUser().id());
+        assertEquals(55L, result.getUserDto().id());
+        assertEquals("Test", result.getUserDto().name());
     }
 
     @Test
@@ -168,7 +167,7 @@ class OrderServiceImplIntegrationTest extends BaseIntegrationTest {
         stubFor(WireMock.get(urlPathEqualTo("/api/users/999"))
             .willReturn(aResponse().withStatus(403)));
 
-        assertThrows(org.springframework.security.access.AccessDeniedException.class, () -> {
+        assertThrows(FeignException.Forbidden.class, () -> {
             orderService.deleteOrder(order.getId());
         });
 

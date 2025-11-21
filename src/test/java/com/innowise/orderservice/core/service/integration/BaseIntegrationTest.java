@@ -14,9 +14,9 @@ import org.testcontainers.utility.DockerImageName;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Testcontainers
-@AutoConfigureWireMock(port = 9561)
+@AutoConfigureWireMock(port = 0)
 @TestPropertySource(properties = {
-    "user.service.url=http://localhost:9561",
+    "user.service.url=http://localhost:${wiremock.server.port}",
     "spring.cloud.discovery.enabled=false"
 })
 public abstract class BaseIntegrationTest {

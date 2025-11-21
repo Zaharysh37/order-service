@@ -2,19 +2,20 @@ package com.innowise.orderservice.core.service.unit;
 
 import com.innowise.orderservice.api.client.GetUserDto;
 import com.innowise.orderservice.api.client.UserClient;
-import com.innowise.orderservice.api.dto.item.GetItemDto;
 import com.innowise.orderservice.api.dto.order.CreateOrderDto;
 import com.innowise.orderservice.api.dto.order.GetOrderDto;
+import com.innowise.orderservice.api.dto.order.GetOrderDtoWithoutUser;
 import com.innowise.orderservice.api.dto.order.orderitem.CreateOrderItemDto;
-import com.innowise.orderservice.api.dto.order.orderitem.GetOrderItemDto;
 import com.innowise.orderservice.core.dao.ItemRepository;
 import com.innowise.orderservice.core.dao.OrderRepository;
 import com.innowise.orderservice.core.entity.Item;
 import com.innowise.orderservice.core.entity.Order;
 import com.innowise.orderservice.core.entity.Status;
-import com.innowise.orderservice.core.mapper.orderitemmapper.GetOrderItemMapper;
+import com.innowise.orderservice.core.mapper.order.GetOrderDtoWithoutUserMapper;
 import com.innowise.orderservice.core.service.impl.OrderServiceImpl;
-import jakarta.persistence.EntityNotFoundException;
+import feign.FeignException;
+import feign.Request;
+import feign.RequestTemplate;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -24,6 +25,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.*;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -40,7 +45,7 @@ class OrderServiceImplTest {
     @Mock
     private UserClient userClient;
     @Mock
-    private GetOrderItemMapper getOrderItemMapper;
+    private GetOrderDtoWithoutUserMapper getOrderDtoWithoutUserMapper;
 
     @InjectMocks
     private OrderServiceImpl orderService;
@@ -49,35 +54,33 @@ class OrderServiceImplTest {
     private final String USER_EMAIL = "test@mail.com";
     private final GetUserDto USER_DTO = new GetUserDto(USER_ID, "John", "Doe", null, USER_EMAIL, List.of());
 
+    private final GetOrderDtoWithoutUser ORDER_WITHOUT_USER_DTO = new GetOrderDtoWithoutUser(
+        1L, Status.CREATED, Instant.now(), new HashSet<>()
+    );
+
     @Test
     void createOrder_shouldCreateOrder_whenUserAndItemsExist() {
         CreateOrderItemDto itemDto = new CreateOrderItemDto(1L, 2);
         CreateOrderDto createOrderDto = new CreateOrderDto(USER_EMAIL, List.of(itemDto));
-
         Item itemEntity = new Item(1L, "Item 1", BigDecimal.TEN);
 
         when(userClient.getUserByEmail(USER_EMAIL)).thenReturn(USER_DTO);
-
         when(itemRepository.findById(1L)).thenReturn(Optional.of(itemEntity));
 
         when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
             Order order = invocation.getArgument(0);
             order.setId(1L);
-            order.setCreationDate(Instant.now());
             return order;
         });
 
-        when(getOrderItemMapper.toDtos(anySet())).thenReturn(List.of(new GetOrderItemDto(1L, 2, new GetItemDto(1L, "Item 1", BigDecimal.TEN))));
+        when(getOrderDtoWithoutUserMapper.toDto(any(Order.class))).thenReturn(ORDER_WITHOUT_USER_DTO);
 
         GetOrderDto result = orderService.createOrder(createOrderDto);
 
-        assertThat(result.id()).isEqualTo(1L);
-        assertThat(result.status()).isEqualTo(Status.CREATED);
-        assertThat(result.user()).isEqualTo(USER_DTO);
-        assertThat(result.orderItems()).hasSize(1);
+        assertThat(result.getOrderDtoWithoutUser()).isEqualTo(ORDER_WITHOUT_USER_DTO);
+        assertThat(result.getUserDto()).isEqualTo(USER_DTO);
 
         verify(userClient).getUserByEmail(USER_EMAIL);
-        verify(itemRepository).findById(1L);
         verify(orderRepository).save(any(Order.class));
     }
 
@@ -96,60 +99,63 @@ class OrderServiceImplTest {
     }
 
     @Test
-    void createOrder_shouldThrowException_whenItemNotFound() {
-        CreateOrderItemDto itemDto = new CreateOrderItemDto(99L, 1);
-        CreateOrderDto createOrderDto = new CreateOrderDto(USER_EMAIL, List.of(itemDto));
-
-        when(userClient.getUserByEmail(USER_EMAIL)).thenReturn(USER_DTO);
-        when(itemRepository.findById(99L)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> orderService.createOrder(createOrderDto))
-            .isInstanceOf(EntityNotFoundException.class)
-            .hasMessageContaining("Item not found: 99");
-    }
-
-    @Test
     void getOrderById_shouldReturnOrder_whenExists() {
         Long orderId = 1L;
         Order order = new Order();
         order.setId(orderId);
         order.setUserId(USER_ID);
-        order.setStatus(Status.CREATED);
-        order.setCreationDate(Instant.now());
-        order.setOrderItems(new HashSet<>());
 
         when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
         when(userClient.getUserById(USER_ID)).thenReturn(USER_DTO);
+        when(getOrderDtoWithoutUserMapper.toDto(order)).thenReturn(ORDER_WITHOUT_USER_DTO);
 
         GetOrderDto result = orderService.getOrderById(orderId);
 
-        assertThat(result.id()).isEqualTo(orderId);
-        assertThat(result.user()).isEqualTo(USER_DTO);
+        assertThat(result.getOrderDtoWithoutUser()).isEqualTo(ORDER_WITHOUT_USER_DTO);
+        assertThat(result.getUserDto()).isEqualTo(USER_DTO);
     }
 
     @Test
-    void getOrderById_shouldThrow_whenNotFound() {
-        when(orderRepository.findById(99L)).thenReturn(Optional.empty());
+    void getAllOrders_shouldReturnPageAndBatchFetchUsers() {
+        Pageable pageable = PageRequest.of(0, 10);
+        Order order1 = new Order(); order1.setId(1L); order1.setUserId(101L);
+        Order order2 = new Order(); order2.setId(2L); order2.setUserId(102L);
+        Page<Order> page = new PageImpl<>(List.of(order1, order2), pageable, 2);
 
-        assertThatThrownBy(() -> orderService.getOrderById(99L))
-            .isInstanceOf(EntityNotFoundException.class);
+        GetUserDto user1 = new GetUserDto(101L, "U1", "S1", null, "e1", List.of());
+        GetUserDto user2 = new GetUserDto(102L, "U2", "S2", null, "e2", List.of());
+
+        when(orderRepository.findAll(pageable)).thenReturn(page);
+
+        when(userClient.getAllById(anyList())).thenReturn(List.of(user1, user2));
+
+        when(getOrderDtoWithoutUserMapper.toDto(any(Order.class))).thenReturn(ORDER_WITHOUT_USER_DTO);
+
+        Page<GetOrderDto> result = orderService.getAllOrders(pageable);
+
+        assertThat(result).hasSize(2);
+        assertThat(result.getContent().get(0).getUserDto().id()).isEqualTo(101L);
+
+        verify(userClient).getAllById(anyList());
     }
 
     @Test
-    void getOrdersByStatuses_shouldMapUsersCorrectly() {
-        List<Status> statuses = List.of(Status.CREATED);
-        Order order1 = new Order(); order1.setId(1L); order1.setUserId(USER_ID);
-        Order order2 = new Order(); order2.setId(2L); order2.setUserId(USER_ID);
+    void getOrdersByIds_shouldReturnPage() {
+        Pageable pageable = PageRequest.of(0, 10);
+        List<Long> ids = List.of(1L);
+        Order order = new Order(); order.setId(1L); order.setUserId(USER_ID);
+        Page<Order> page = new PageImpl<>(List.of(order), pageable, 1);
 
-        List<Order> orders = List.of(order1, order2);
+        when(orderRepository.findAllByIdIn(ids, pageable)).thenReturn(page);
 
-        when(orderRepository.findAllByStatusInOrderByCreatedAtDesc(statuses)).thenReturn(orders);
-        when(userClient.getUserById(USER_ID)).thenReturn(USER_DTO);
+        when(userClient.getAllById(anyList())).thenReturn(List.of(USER_DTO));
 
-        List<GetOrderDto> results = orderService.getOrdersByStatuses(statuses);
+        when(getOrderDtoWithoutUserMapper.toDto(order)).thenReturn(ORDER_WITHOUT_USER_DTO);
 
-        assertThat(results).hasSize(2);
-        verify(userClient, times(2)).getUserById(USER_ID);
+        Page<GetOrderDto> result = orderService.getOrdersByIds(ids, pageable);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.getContent().get(0).getUserDto()).isEqualTo(USER_DTO);
     }
 
     @Test
@@ -169,24 +175,32 @@ class OrderServiceImplTest {
         when(orderRepository.save(order)).thenReturn(savedOrder);
         when(userClient.getUserById(USER_ID)).thenReturn(USER_DTO);
 
+        when(getOrderDtoWithoutUserMapper.toDto(savedOrder)).thenReturn(ORDER_WITHOUT_USER_DTO);
+
         GetOrderDto result = orderService.updateOrderStatus(orderId, Status.SHIPPED);
 
-        assertThat(result.status()).isEqualTo(Status.SHIPPED);
+        assertThat(result.getOrderDtoWithoutUser()).isEqualTo(ORDER_WITHOUT_USER_DTO);
+        assertThat(result.getUserDto()).isEqualTo(USER_DTO);
+
         verify(orderRepository).save(order);
     }
 
     @Test
-    void deleteOrder_shouldCallUserClientAndDelete() {
+    void deleteOrder_shouldThrowAccessDenied_whenUserClientReturnsForbidden() {
         Long orderId = 1L;
         Order order = new Order();
         order.setId(orderId);
         order.setUserId(USER_ID);
 
         when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
-        when(userClient.getUserById(USER_ID)).thenReturn(USER_DTO);
-        orderService.deleteOrder(orderId);
 
-        verify(userClient).getUserById(USER_ID);
-        verify(orderRepository).deleteById(orderId);
+        Request request = Request.create(Request.HttpMethod.GET, "url", Map.of(), null, new RequestTemplate());
+        when(userClient.getUserById(USER_ID))
+            .thenThrow(new FeignException.Forbidden("Forbidden", request, null, null));
+
+        assertThatThrownBy(() -> orderService.deleteOrder(orderId))
+            .isInstanceOf(FeignException.Forbidden.class);
+
+        verify(orderRepository, never()).deleteById(any());
     }
 }

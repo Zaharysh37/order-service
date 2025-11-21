@@ -10,17 +10,15 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.annotation.DirtiesContext;
 
 import java.math.BigDecimal;
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.mock;
 
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class ItemServiceImplIntegrationTest extends BaseIntegrationTest {
@@ -38,7 +36,7 @@ class ItemServiceImplIntegrationTest extends BaseIntegrationTest {
 
     @Test
     @WithMockUser(roles = "ADMIN")
-    public void test_createItem_Success_Admin() {
+    void test_createItem_Success_Admin() {
         CreateItemDto dto = new CreateItemDto("Mouse", new BigDecimal("50.00"));
         GetItemDto created = itemService.createItem(dto);
 
@@ -53,7 +51,7 @@ class ItemServiceImplIntegrationTest extends BaseIntegrationTest {
     void test_createItem_Forbidden_User() {
         CreateItemDto dto = new CreateItemDto("Mouse", new BigDecimal("50.00"));
 
-        assertThrows(org.springframework.security.access.AccessDeniedException.class, () -> {
+        assertThrows(AccessDeniedException.class, () -> {
             itemService.createItem(dto);
         });
     }
@@ -64,7 +62,9 @@ class ItemServiceImplIntegrationTest extends BaseIntegrationTest {
         itemRepository.save(new Item(null, "A", BigDecimal.TEN));
         itemRepository.save(new Item(null, "B", BigDecimal.TEN));
 
-        List<GetItemDto> items = itemService.getAllItems();
-        assertEquals(2, items.size());
+        Page<GetItemDto> page = itemService.getAllItems(PageRequest.of(0, 10));
+
+        assertEquals(2, page.getTotalElements());
+        assertEquals(2, page.getContent().size());
     }
 }
