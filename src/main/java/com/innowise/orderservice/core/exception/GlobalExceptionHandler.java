@@ -1,6 +1,8 @@
 package com.innowise.orderservice.core.exception;
 
 import com.innowise.orderservice.api.dto.GetErrorDto;
+import feign.FeignException;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import jakarta.persistence.EntityNotFoundException;
 import java.nio.file.AccessDeniedException;
 import java.time.LocalDateTime;
@@ -102,26 +104,32 @@ public class GlobalExceptionHandler {
       );
    }
 
-   @ExceptionHandler(org.springframework.security.core.AuthenticationException.class)
-   public ResponseEntity<GetErrorDto> handleAuthenticationException(
-       org.springframework.security.core.AuthenticationException ex, WebRequest request) {
+   @ExceptionHandler(FeignException.class)
+   public ResponseEntity<GetErrorDto> handleFeignStatusException(
+       FeignException ex, WebRequest request) {
 
       return buildResponseEntity(
           ex,
-          "Authentication failed: " + ex.getMessage(),
-          HttpStatus.UNAUTHORIZED,
+          String.format(
+              "External service error [%d]: %s",
+              ex.status(),
+              ex.getMessage() != null ? ex.getMessage() : "No details"
+          ),
+          ex.status() > 0 ?
+              HttpStatus.valueOf(ex.status()) :
+              HttpStatus.INTERNAL_SERVER_ERROR,
           request
       );
    }
 
-   @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
-   public ResponseEntity<GetErrorDto> handleAccessDeniedException(
-       org.springframework.security.access.AccessDeniedException ex, WebRequest request) {
+   @ExceptionHandler(CallNotPermittedException.class)
+   public ResponseEntity<GetErrorDto> handleCircuitBreakerOpen(
+       FeignException ex, WebRequest request) {
 
       return buildResponseEntity(
           ex,
-          "Access Denied: You do not have permission to access this resource.",
-          HttpStatus.FORBIDDEN,
+          "Service Unavailable: Circuit breaker is open - User Service is temporarily unavailable",
+          HttpStatus.SERVICE_UNAVAILABLE,
           request
       );
    }

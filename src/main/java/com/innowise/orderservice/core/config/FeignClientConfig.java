@@ -21,8 +21,7 @@ public class FeignClientConfig {
             public void apply(RequestTemplate template) {
                 Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
-                if (authentication instanceof AbstractOAuth2TokenAuthenticationToken) {
-                    AbstractOAuth2TokenAuthenticationToken<?> oauthToken = (AbstractOAuth2TokenAuthenticationToken<?>) authentication;
+                if (authentication instanceof AbstractOAuth2TokenAuthenticationToken<?> oauthToken) {
                     String tokenValue = oauthToken.getToken().getTokenValue();
 
                     template.header(AUTHORIZATION_HEADER, String.format("%s %s", BEARER_TOKEN_TYPE, tokenValue));
