@@ -1,48 +1,32 @@
 package com.innowise.orderservice.api.client;
 
-import feign.FeignException;
+import com.innowise.orderservice.core.config.FeignClientConfig;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
-import java.time.LocalDate;
-import java.util.Collections;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.util.List;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 
 @FeignClient(
     name = "user-service",
-    url = "${user.service.url:http://localhost:8081}",
-    path = "/api/users"
+    url = "${user.service.url}",
+    path = "/api/users",
+    configuration = FeignClientConfig.class
 )
 public interface UserClient {
 
-    Logger logger = LoggerFactory.getLogger(UserClient.class);
-
     @GetMapping("/email")
-    @CircuitBreaker(name = "userService", fallbackMethod = "fallbackGetUserByEmail")
+    @CircuitBreaker(name = "userService")
     GetUserDto getUserByEmail(@RequestParam("email") String email);
 
     @GetMapping("/{id}")
-    @CircuitBreaker(name = "userService", fallbackMethod = "fallbackGetUserById")
+    @CircuitBreaker(name = "userService")
     GetUserDto getUserById(@PathVariable("id") Long id);
 
-    default GetUserDto fallbackGetUserByEmail(String email, Throwable throwable) {
-        logger.warn("UserService (by email) is unavailable. Fallback executed.", throwable.getMessage());
-        System.err.println("!!! FEIGN FALLBACK ERROR: " + throwable.getMessage());
-        throwable.printStackTrace();
-        return new GetUserDto(-1L, "User", "Unavailable", LocalDate.MAX, email, Collections.emptyList());
-    }
-
-    default GetUserDto fallbackGetUserById(Long id, Throwable throwable) {
-        if (throwable instanceof FeignException.Forbidden) {
-            throw (FeignException.Forbidden) throwable;
-        }
-
-        System.err.println("!!! FEIGN FALLBACK ERROR: " + throwable.getMessage());
-        throwable.printStackTrace();
-        logger.warn("UserService (by id) is unavailable. Fallback executed.", throwable.getMessage());
-        return new GetUserDto(id, "User", "Unavailable", LocalDate.MAX, "N/A", Collections.emptyList());
-    }
+    @PostMapping("/batch/id")
+    @CircuitBreaker(name = "userService")
+    List<GetUserDto> getAllById(@RequestBody List<Long> ids);
 }

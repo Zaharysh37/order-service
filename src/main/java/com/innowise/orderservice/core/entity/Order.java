@@ -14,10 +14,13 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.Set;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.BatchSize;
+import org.springframework.data.annotation.CreatedDate;
 
 @Getter
 @Setter
@@ -45,8 +48,11 @@ public class Order {
         orphanRemoval = true,
         fetch = FetchType.LAZY
     )
+    @BatchSize(size = 25)
     private Set<OrderItem> orderItems = new HashSet<>();
 
+    //@CreatedDate
+    //LocalDateTime private Instant creationDate;
     @PrePersist
     protected void onCreate() {
         this.creationDate = Instant.now();
