@@ -36,11 +36,10 @@ public class SecurityConfig {
             )
             .authorizeHttpRequests(authz -> authz
                 .requestMatchers(
-                    "/actuator/**"
-                )
+                    "/actuator/**")
                 .permitAll()
                 .requestMatchers(
-                    HttpMethod.GET, "/api/v1/items/**")
+                    HttpMethod.GET, "/api/items", "/api/items/**")
                 .permitAll()
                 .anyRequest()
                 .authenticated()

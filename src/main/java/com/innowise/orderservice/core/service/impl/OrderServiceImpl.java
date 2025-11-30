@@ -115,12 +115,10 @@ public class OrderServiceImpl implements OrderService {
                 GetUserDto::id, dto -> dto
             ));
 
-        return orders.map(order -> {
-                return new GetOrderDto(
-                    getOrderDtoWithoutUserMapper.toDto(order),
-                    getUserDtosMap.get(order.getUserId())
-                );
-            });
+        return orders.map(order -> new GetOrderDto(
+            getOrderDtoWithoutUserMapper.toDto(order),
+            getUserDtosMap.get(order.getUserId())
+        ));
     }
 
     @Override
@@ -146,8 +144,8 @@ public class OrderServiceImpl implements OrderService {
         Order existingOrder = orderRepository.findById(id)
             .orElseThrow(() -> new EntityNotFoundException("Order not found: " + id));
 
-        userClient.getUserById(existingOrder.getUserId());
+        userClient.getUserById(existingOrder.getUserId()); //проверка безопасности
 
-        orderRepository.deleteById(id);
+        orderRepository.delete(existingOrder);
     }
 }
