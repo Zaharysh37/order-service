@@ -2,6 +2,7 @@ package com.innowise.orderservice.core.service.impl;
 
 import com.innowise.orderservice.api.client.GetUserDto;
 import com.innowise.orderservice.api.client.UserClient;
+import com.innowise.orderservice.api.dto.eventdto.OrderEventDto;
 import com.innowise.orderservice.api.dto.order.CreateOrderDto;
 import com.innowise.orderservice.api.dto.order.GetOrderDto;
 import com.innowise.orderservice.api.dto.order.orderitem.CreateOrderItemDto;
@@ -11,8 +12,10 @@ import com.innowise.orderservice.core.entity.Item;
 import com.innowise.orderservice.core.entity.Order;
 import com.innowise.orderservice.core.entity.OrderItem;
 import com.innowise.orderservice.core.entity.Status;
+import com.innowise.orderservice.core.mapper.eventmapper.GetOrderEventMapper;
 import com.innowise.orderservice.core.mapper.order.GetOrderDtoWithoutUserMapper;
 import com.innowise.orderservice.core.service.OrderService;
+import com.innowise.orderservice.core.service.eventservice.OrderProducer;
 import jakarta.persistence.EntityNotFoundException;
 import java.util.List;
 import java.util.Map;
@@ -29,9 +32,16 @@ import org.springframework.transaction.annotation.Transactional;
 public class OrderServiceImpl implements OrderService {
 
     private final OrderRepository orderRepository;
+
     private final ItemRepository itemRepository;
+
     private final UserClient userClient;
+
     private final GetOrderDtoWithoutUserMapper getOrderDtoWithoutUserMapper;
+
+    private final OrderProducer orderProducer;
+
+    private final GetOrderEventMapper getOrderEventMapper;
 
     @Override
     @Transactional
@@ -60,6 +70,9 @@ public class OrderServiceImpl implements OrderService {
         }
 
         Order savedOrder = orderRepository.save(order);
+
+        OrderEventDto orderEventDto = getOrderEventMapper.toDto(order);
+        orderProducer.sendOrderCreatedEvent(orderEventDto);
 
         return new GetOrderDto(
             getOrderDtoWithoutUserMapper.toDto(savedOrder),
