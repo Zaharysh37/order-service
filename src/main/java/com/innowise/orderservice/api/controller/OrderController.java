@@ -11,6 +11,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -35,6 +36,7 @@ public class OrderController {
     }
 
     @GetMapping
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Page<GetOrderDto>> getAllOrders(Pageable pageable) {
         Page<GetOrderDto> orders = orderService.getAllOrders(pageable);
         return new ResponseEntity<>(orders, HttpStatus.OK);
@@ -47,6 +49,7 @@ public class OrderController {
     }
 
     @GetMapping("/by-ids")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Page<GetOrderDto>> getOrdersByIds(@RequestParam("ids") List<Long> ids,
                                                             Pageable pageable) {
         Page<GetOrderDto> orders = orderService.getOrdersByIds(ids, pageable);
@@ -54,16 +57,18 @@ public class OrderController {
     }
 
     @GetMapping("/by-status")
-    public ResponseEntity<Page<GetOrderDto>> getOrdersByEmail(@RequestBody List<Status> statuses,
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Page<GetOrderDto>> getOrdersByStatuses(@RequestParam("statuses") List<Status> statuses,
                                                               Pageable pageable) {
         Page<GetOrderDto> orders = orderService.getOrdersByStatuses(statuses, pageable);
         return new ResponseEntity<>(orders, HttpStatus.OK);
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<GetOrderDto> updateOrder(@PathVariable Long id,
                                                    @RequestParam("status") Status status) {
-        GetOrderDto order = orderService.getOrderById(id);
+        GetOrderDto order = orderService.updateOrderStatus(id, status);
         return new ResponseEntity<>(order, HttpStatus.OK);
     }
 
