@@ -8,7 +8,6 @@ import com.innowise.orderservice.core.mapper.itemmapper.CreateItemMapper;
 import com.innowise.orderservice.core.mapper.itemmapper.GetItemMapper;
 import com.innowise.orderservice.core.service.ItemService;
 import jakarta.persistence.EntityNotFoundException;
-import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;

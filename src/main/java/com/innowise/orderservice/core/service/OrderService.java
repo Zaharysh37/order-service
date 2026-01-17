@@ -3,6 +3,7 @@ package com.innowise.orderservice.core.service;
 import com.innowise.orderservice.api.dto.order.CreateOrderDto;
 import com.innowise.orderservice.api.dto.order.GetOrderDto;
 import com.innowise.orderservice.core.entity.Status;
+import java.nio.file.AccessDeniedException;
 import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -11,7 +12,7 @@ public interface OrderService {
 
     GetOrderDto createOrder(CreateOrderDto createOrderDto);
 
-    GetOrderDto getOrderById(Long id);
+    GetOrderDto getOrderById(Long id) throws AccessDeniedException;
 
     Page<GetOrderDto> getOrdersByIds(List<Long> ids, Pageable pageable);
 
@@ -21,5 +22,5 @@ public interface OrderService {
 
     GetOrderDto updateOrderStatus(Long id, Status status);
 
-    void deleteOrder(Long id);
+    void deleteOrder(Long id) throws AccessDeniedException;
 }

@@ -2,6 +2,7 @@ package com.innowise.orderservice.core.service.unit;
 
 import com.innowise.orderservice.api.client.GetUserDto;
 import com.innowise.orderservice.api.client.UserClient;
+import com.innowise.orderservice.api.dto.eventdto.OrderEventDto;
 import com.innowise.orderservice.api.dto.order.CreateOrderDto;
 import com.innowise.orderservice.api.dto.order.GetOrderDto;
 import com.innowise.orderservice.api.dto.order.GetOrderDtoWithoutUser;
@@ -11,15 +12,17 @@ import com.innowise.orderservice.core.dao.OrderRepository;
 import com.innowise.orderservice.core.entity.Item;
 import com.innowise.orderservice.core.entity.Order;
 import com.innowise.orderservice.core.entity.Status;
+import com.innowise.orderservice.core.mapper.eventmapper.GetOrderEventMapper;
 import com.innowise.orderservice.core.mapper.order.GetOrderDtoWithoutUserMapper;
+import com.innowise.orderservice.core.security.SecurityHelper;
+import com.innowise.orderservice.core.service.eventservice.OrderProducer;
 import com.innowise.orderservice.core.service.impl.OrderServiceImpl;
-import feign.FeignException;
-import feign.Request;
-import feign.RequestTemplate;
+import java.nio.file.AccessDeniedException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
@@ -46,11 +49,18 @@ class OrderServiceImplTest {
     private UserClient userClient;
     @Mock
     private GetOrderDtoWithoutUserMapper getOrderDtoWithoutUserMapper;
+    @Mock
+    private GetOrderEventMapper getOrderEventMapper;
+    @Mock
+    private OrderProducer orderProducer;
+    @Mock
+    private SecurityHelper securityHelper;
 
     @InjectMocks
     private OrderServiceImpl orderService;
 
     private final Long USER_ID = 100L;
+    private final Long FAKE_USER_ID = 200L;
     private final String USER_EMAIL = "test@mail.com";
     private final GetUserDto USER_DTO = new GetUserDto(USER_ID, "John", "Doe", null, USER_EMAIL, List.of());
 
@@ -73,6 +83,18 @@ class OrderServiceImplTest {
             return order;
         });
 
+        when(getOrderEventMapper.toDto(any(Order.class))).thenAnswer(
+            invocation -> {
+                Order orderLocal = invocation.getArgument(0);
+                return new OrderEventDto(
+                    orderLocal.getId(),
+                    orderLocal.getUserId(),
+                    BigDecimal.ZERO
+                );
+            }
+        );
+        doNothing().when(orderProducer).sendOrderCreatedEvent(any(OrderEventDto.class));
+
         when(getOrderDtoWithoutUserMapper.toDto(any(Order.class))).thenReturn(ORDER_WITHOUT_USER_DTO);
 
         GetOrderDto result = orderService.createOrder(createOrderDto);
@@ -87,9 +109,8 @@ class OrderServiceImplTest {
     @Test
     void createOrder_shouldThrowException_whenUserClientReturnsFallback() {
         CreateOrderDto createOrderDto = new CreateOrderDto("unknown@mail.com", List.of());
-        GetUserDto fallbackUser = new GetUserDto(-1L, "N/A", "N/A", null, "N/A", List.of());
 
-        when(userClient.getUserByEmail("unknown@mail.com")).thenReturn(fallbackUser);
+        when(userClient.getUserByEmail("unknown@mail.com")).thenReturn(null);
 
         assertThatThrownBy(() -> orderService.createOrder(createOrderDto))
             .isInstanceOf(RuntimeException.class)
@@ -99,13 +120,17 @@ class OrderServiceImplTest {
     }
 
     @Test
-    void getOrderById_shouldReturnOrder_whenExists() {
+    void getOrderById_shouldReturnOrder_whenExists() throws AccessDeniedException {
         Long orderId = 1L;
         Order order = new Order();
         order.setId(orderId);
         order.setUserId(USER_ID);
 
         when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
+
+        when(securityHelper.isAdmin()).thenReturn(false);
+        when(securityHelper.getCurrentUserId()).thenReturn(USER_ID);
+
         when(userClient.getUserById(USER_ID)).thenReturn(USER_DTO);
         when(getOrderDtoWithoutUserMapper.toDto(order)).thenReturn(ORDER_WITHOUT_USER_DTO);
 
@@ -113,6 +138,25 @@ class OrderServiceImplTest {
 
         assertThat(result.getOrderDtoWithoutUser()).isEqualTo(ORDER_WITHOUT_USER_DTO);
         assertThat(result.getUserDto()).isEqualTo(USER_DTO);
+    }
+
+    @Test
+    void getOrderById_shouldThrowAccessDenied_whenResourceDontBelongTo()
+        throws AccessDeniedException {
+
+        Long orderId = 1L;
+        Order order = new Order();
+        order.setId(orderId);
+        order.setUserId(USER_ID);
+
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
+
+        when(securityHelper.isAdmin()).thenReturn(false);
+        when(securityHelper.getCurrentUserId()).thenReturn(FAKE_USER_ID);
+
+        assertThatThrownBy(() -> orderService.getOrderById(orderId))
+            .isInstanceOf(AccessDeniedException.class)
+            .hasMessage("You are not allowed to access this resource.");
     }
 
     @Test
@@ -186,7 +230,8 @@ class OrderServiceImplTest {
     }
 
     @Test
-    void deleteOrder_shouldThrowAccessDenied_whenUserClientReturnsForbidden() {
+    void deleteOrder_shouldDeleteOrderById_whenResourceBelongTo() throws AccessDeniedException {
+
         Long orderId = 1L;
         Order order = new Order();
         order.setId(orderId);
@@ -194,13 +239,30 @@ class OrderServiceImplTest {
 
         when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
 
-        Request request = Request.create(Request.HttpMethod.GET, "url", Map.of(), null, new RequestTemplate());
-        when(userClient.getUserById(USER_ID))
-            .thenThrow(new FeignException.Forbidden("Forbidden", request, null, null));
+        when(securityHelper.isAdmin()).thenReturn(false);
+        when(securityHelper.getCurrentUserId()).thenReturn(USER_ID);
+
+        orderService.deleteOrder(orderId);
+
+        verify(orderRepository, times(1)).delete(order);
+    }
+
+    @Test
+    void deleteOrder_shouldThrowAccessDenied_whenResourceDontBelongTo()
+        throws AccessDeniedException {
+
+        Long orderId = 1L;
+        Order order = new Order();
+        order.setId(orderId);
+        order.setUserId(USER_ID);
+
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
+
+        when(securityHelper.isAdmin()).thenReturn(false);
+        when(securityHelper.getCurrentUserId()).thenReturn(FAKE_USER_ID);
 
         assertThatThrownBy(() -> orderService.deleteOrder(orderId))
-            .isInstanceOf(FeignException.Forbidden.class);
-
-        verify(orderRepository, never()).deleteById(any());
+            .isInstanceOf(AccessDeniedException.class)
+            .hasMessage("You are not allowed to access this resource.");
     }
 }

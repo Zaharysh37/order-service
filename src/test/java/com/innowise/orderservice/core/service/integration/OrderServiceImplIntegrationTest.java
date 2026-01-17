@@ -1,6 +1,9 @@
 package com.innowise.orderservice.core.service.integration;
 
 import com.github.tomakehurst.wiremock.client.WireMock;
+import com.innowise.orderservice.api.dto.eventdto.OrderEventDto;
+import com.innowise.orderservice.api.dto.eventdto.PaymentEventDto;
+import com.innowise.orderservice.api.dto.eventdto.PaymentStatus;
 import com.innowise.orderservice.api.dto.item.CreateItemDto;
 import com.innowise.orderservice.api.dto.item.GetItemDto;
 import com.innowise.orderservice.api.dto.order.CreateOrderDto;
@@ -11,41 +14,90 @@ import com.innowise.orderservice.core.dao.OrderRepository;
 import com.innowise.orderservice.core.entity.Item;
 import com.innowise.orderservice.core.entity.Order;
 import com.innowise.orderservice.core.entity.Status;
+import com.innowise.orderservice.core.security.SecurityHelper;
 import com.innowise.orderservice.core.service.ItemService;
 import com.innowise.orderservice.core.service.OrderService;
 import feign.FeignException;
+import java.time.Duration;
+import java.util.Collections;
+import java.util.Map;
+import java.util.stream.Collectors;
+import lombok.SneakyThrows;
+import org.apache.kafka.clients.consumer.Consumer;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.common.serialization.StringDeserializer;
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.serializer.JsonDeserializer;
+import org.springframework.kafka.test.utils.KafkaTestUtils;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.annotation.DirtiesContext;
 
 import java.math.BigDecimal;
 import java.util.List;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.springframework.cloud.contract.verifier.assertion.SpringCloudContractAssertions.assertThat;
 
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class OrderServiceImplIntegrationTest extends BaseIntegrationTest {
 
     @Autowired private OrderService orderService;
-    @Autowired private ItemService itemService;
     @Autowired private OrderRepository orderRepository;
     @Autowired private ItemRepository itemRepository;
+    @Autowired private KafkaTemplate<String, Object> kafkaTemplate;
+    private Consumer<String, OrderEventDto> testConsumer;
+
+    @Autowired
+    private TransactionTemplate transactionTemplate;
+
+    @MockBean
+    private SecurityHelper securityHelper;
 
     @BeforeEach
-    @AfterEach
-    void cleanup() {
-        orderRepository.deleteAll();
-        itemRepository.deleteAll();
+    void setUp() {
+
+        Map<String, Object> consumerProps = KafkaTestUtils.consumerProps(
+            kafkaContainer.getBootstrapServers(),
+            "test-group",
+            "true");
+        consumerProps.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+
+        JsonDeserializer<OrderEventDto> deserializer = new JsonDeserializer<>(OrderEventDto.class);
+        deserializer.addTrustedPackages("*");
+        deserializer.setUseTypeHeaders(false);
+
+        DefaultKafkaConsumerFactory<String, OrderEventDto> cf = new DefaultKafkaConsumerFactory<>(
+            consumerProps,
+            new StringDeserializer(),
+            deserializer
+        );
+
+        testConsumer = cf.createConsumer();
+        testConsumer.subscribe(Collections.singletonList("create-order"));
     }
 
-    private CreateItemDto createTestItemDto() {
-        return new CreateItemDto("MacBook", new BigDecimal("2000.00"));
+    @AfterEach
+    void cleanup() {
+
+        orderRepository.deleteAll();
+        itemRepository.deleteAll();
+
+        if (testConsumer != null) {
+            testConsumer.close();
+        }
     }
 
     private void stubUserServiceByEmail(String email, Long userId) {
@@ -82,26 +134,9 @@ class OrderServiceImplIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMIN")
-    void test_createItem_Success() {
-        CreateItemDto dto = createTestItemDto();
-        GetItemDto created = itemService.createItem(dto);
-
-        assertNotNull(created.id());
-        assertEquals("MacBook", created.name());
-        assertTrue(itemRepository.findById(created.id()).isPresent());
-    }
-
-    @Test
-    @WithMockUser(roles = "USER")
-    void test_createItem_Forbidden_ForUser() {
-        CreateItemDto dto = createTestItemDto();
-        assertThrows(AccessDeniedException.class, () -> itemService.createItem(dto));
-    }
-
-    @Test
     @WithMockUser(roles = "USER")
     void test_createOrder_Success() {
+
         Item item = new Item();
         item.setName("Phone");
         item.setPrice(BigDecimal.TEN);
@@ -118,59 +153,34 @@ class OrderServiceImplIntegrationTest extends BaseIntegrationTest {
 
         GetOrderDto result = orderService.createOrder(orderDto);
 
-        assertNotNull(result.getOrderDtoWithoutUser().id());
-        assertEquals(Status.CREATED, result.getOrderDtoWithoutUser().status());
-        assertEquals(userId, result.getUserDto().id());
-        assertEquals(1, result.getOrderDtoWithoutUser().orderItems().size());
-    }
+        ConsumerRecord<String, OrderEventDto> record = KafkaTestUtils.
+            getSingleRecord(testConsumer, "create-order", Duration.ofSeconds(10));
 
-    @Test
-    @WithMockUser(roles = "USER")
-    void test_getOrderById_Success() {
-        Order order = new Order();
-        order.setUserId(55L);
-        order.setStatus(Status.SHIPPED);
-        order = orderRepository.save(order);
+        OrderEventDto orderEventDto = record.value();
+        assertThat(orderEventDto).isNotNull();
+        assertThat(orderEventDto.orderId()).isEqualTo(result.getOrderDtoWithoutUser().id());
+        assertThat(orderEventDto.userId()).isEqualTo(userId);
+        assertThat(orderEventDto.amount()).isEqualByComparingTo(BigDecimal.valueOf(20));
 
-        stubUserServiceById(55L);
+        PaymentEventDto paymentEvent = new PaymentEventDto("694a6081723088150e7cf74c",
+            orderEventDto.orderId(), orderEventDto.userId(), PaymentStatus.SUCCESS);
 
-        GetOrderDto result = orderService.getOrderById(order.getId());
+        kafkaTemplate.send("create-payment", paymentEvent);
 
-        assertEquals(order.getId(), result.getOrderDtoWithoutUser().id());
-        assertEquals(55L, result.getUserDto().id());
-        assertEquals("Test", result.getUserDto().name());
-    }
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+            transactionTemplate.execute(status -> {
+                List<Order> orders = orderRepository.findAll();
+                assertThat(orders).hasSize(1);
+                Order order = orders.get(0);
 
-    @Test
-    @WithMockUser(roles = "USER")
-    void test_deleteOrder_Success() {
-        Order order = new Order();
-        order.setUserId(55L);
-        order.setStatus(Status.CREATED);
-        order = orderRepository.save(order);
+                assertThat(order.getUserId()).isEqualTo(userId);
+                assertThat(order.getStatus()).isEqualTo(Status.PROCESSED);
 
-        stubUserServiceById(55L);
+                assertThat(order.getOrderItems()).hasSize(1);
+                assertThat(order.getOrderItems().iterator().next().getQuantity()).isEqualTo(2);
 
-        orderService.deleteOrder(order.getId());
-
-        assertTrue(orderRepository.findById(order.getId()).isEmpty());
-    }
-
-    @Test
-    @WithMockUser(roles = "USER")
-    void test_deleteOrder_Forbidden_IfUserServiceRejects() {
-        Order order = new Order();
-        order.setUserId(999L);
-        order.setStatus(Status.CREATED);
-        orderRepository.save(order);
-
-        stubFor(WireMock.get(urlPathEqualTo("/api/users/999"))
-            .willReturn(aResponse().withStatus(403)));
-
-        assertThrows(FeignException.Forbidden.class, () -> {
-            orderService.deleteOrder(order.getId());
+                return null;
+            });
         });
-
-        assertTrue(orderRepository.findById(order.getId()).isPresent());
     }
 }

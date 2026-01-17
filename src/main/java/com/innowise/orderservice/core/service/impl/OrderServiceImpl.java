@@ -2,6 +2,7 @@ package com.innowise.orderservice.core.service.impl;
 
 import com.innowise.orderservice.api.client.GetUserDto;
 import com.innowise.orderservice.api.client.UserClient;
+import com.innowise.orderservice.api.dto.eventdto.OrderEventDto;
 import com.innowise.orderservice.api.dto.order.CreateOrderDto;
 import com.innowise.orderservice.api.dto.order.GetOrderDto;
 import com.innowise.orderservice.api.dto.order.orderitem.CreateOrderItemDto;
@@ -11,13 +12,18 @@ import com.innowise.orderservice.core.entity.Item;
 import com.innowise.orderservice.core.entity.Order;
 import com.innowise.orderservice.core.entity.OrderItem;
 import com.innowise.orderservice.core.entity.Status;
+import com.innowise.orderservice.core.mapper.eventmapper.GetOrderEventMapper;
 import com.innowise.orderservice.core.mapper.order.GetOrderDtoWithoutUserMapper;
+import com.innowise.orderservice.core.security.SecurityHelper;
 import com.innowise.orderservice.core.service.OrderService;
+import com.innowise.orderservice.core.service.eventservice.OrderProducer;
 import jakarta.persistence.EntityNotFoundException;
+import java.nio.file.AccessDeniedException;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.SneakyThrows;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -29,16 +35,25 @@ import org.springframework.transaction.annotation.Transactional;
 public class OrderServiceImpl implements OrderService {
 
     private final OrderRepository orderRepository;
+
     private final ItemRepository itemRepository;
+
     private final UserClient userClient;
+
     private final GetOrderDtoWithoutUserMapper getOrderDtoWithoutUserMapper;
+
+    private final OrderProducer orderProducer;
+
+    private final GetOrderEventMapper getOrderEventMapper;
+
+    private final SecurityHelper securityHelper;
 
     @Override
     @Transactional
     public GetOrderDto createOrder(CreateOrderDto createOrderDto) {
         GetUserDto getUserDto = userClient.getUserByEmail(createOrderDto.userEmail());
 
-        if (getUserDto.id() == -1L) {
+        if (getUserDto == null) {
             throw new RuntimeException("User service is unavailable, cannot create order.");
         }
 
@@ -61,6 +76,9 @@ public class OrderServiceImpl implements OrderService {
 
         Order savedOrder = orderRepository.save(order);
 
+        OrderEventDto orderEventDto = getOrderEventMapper.toDto(order);
+        orderProducer.sendOrderCreatedEvent(orderEventDto);
+
         return new GetOrderDto(
             getOrderDtoWithoutUserMapper.toDto(savedOrder),
             getUserDto
@@ -69,9 +87,11 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional(readOnly = true)
-    public GetOrderDto getOrderById(Long id) {
+    public GetOrderDto getOrderById(Long id) throws AccessDeniedException {
         Order order = orderRepository.findById(id)
             .orElseThrow(() -> new EntityNotFoundException("Order not found: " + id));
+
+        checkAccess(order.getUserId());
 
         GetUserDto getUserDto = userClient.getUserById(order.getUserId());
 
@@ -115,12 +135,10 @@ public class OrderServiceImpl implements OrderService {
                 GetUserDto::id, dto -> dto
             ));
 
-        return orders.map(order -> {
-                return new GetOrderDto(
-                    getOrderDtoWithoutUserMapper.toDto(order),
-                    getUserDtosMap.get(order.getUserId())
-                );
-            });
+        return orders.map(order -> new GetOrderDto(
+            getOrderDtoWithoutUserMapper.toDto(order),
+            getUserDtosMap.get(order.getUserId())
+        ));
     }
 
     @Override
@@ -142,12 +160,17 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public void deleteOrder(Long id) {
+    public void deleteOrder(Long id) throws AccessDeniedException {
         Order existingOrder = orderRepository.findById(id)
             .orElseThrow(() -> new EntityNotFoundException("Order not found: " + id));
+        checkAccess(existingOrder.getUserId());
+        orderRepository.delete(existingOrder);
+    }
 
-        userClient.getUserById(existingOrder.getUserId());
-
-        orderRepository.deleteById(id);
+    private void checkAccess(Long userId) throws AccessDeniedException {
+        Long currentUserId = securityHelper.getCurrentUserId();
+        if (!securityHelper.isAdmin() && !currentUserId.equals(userId)) {
+            throw new AccessDeniedException("You are not allowed to access this resource.");
+        }
     }
 }
