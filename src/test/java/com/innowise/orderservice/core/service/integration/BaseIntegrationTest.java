@@ -7,6 +7,7 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
+import org.testcontainers.containers.KafkaContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -26,6 +27,9 @@ public abstract class BaseIntegrationTest {
         DockerImageName.parse("postgres:15-alpine")
     );
 
+    @Container
+    static final KafkaContainer kafkaContainer = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.5.0"));
+
     @MockBean
     protected JwtDecoder jwtDecoder;
 
@@ -38,5 +42,11 @@ public abstract class BaseIntegrationTest {
 
         registry.add("spring.liquibase.enabled", () -> "true");
         registry.add("spring.liquibase.change-log", () -> "classpath:db/changelog/db.changelog-master.xml");
+
+        registry.add("spring.kafka.bootstrap-servers", kafkaContainer::getBootstrapServers);
+        registry.add("ORDER_PRODUCER_TOPIC", () -> "create-order");
+        registry.add("ORDER_CONSUMER_TOPIC", () -> "create-payment");
+        registry.add("GROUP_ID", () -> "order-service-group");
+        registry.add("BOOTSTRAP_SERVER", kafkaContainer::getBootstrapServers);
     }
 }
