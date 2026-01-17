@@ -14,13 +14,16 @@ import com.innowise.orderservice.core.entity.OrderItem;
 import com.innowise.orderservice.core.entity.Status;
 import com.innowise.orderservice.core.mapper.eventmapper.GetOrderEventMapper;
 import com.innowise.orderservice.core.mapper.order.GetOrderDtoWithoutUserMapper;
+import com.innowise.orderservice.core.security.SecurityHelper;
 import com.innowise.orderservice.core.service.OrderService;
 import com.innowise.orderservice.core.service.eventservice.OrderProducer;
 import jakarta.persistence.EntityNotFoundException;
+import java.nio.file.AccessDeniedException;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.SneakyThrows;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -43,12 +46,14 @@ public class OrderServiceImpl implements OrderService {
 
     private final GetOrderEventMapper getOrderEventMapper;
 
+    private final SecurityHelper securityHelper;
+
     @Override
     @Transactional
     public GetOrderDto createOrder(CreateOrderDto createOrderDto) {
         GetUserDto getUserDto = userClient.getUserByEmail(createOrderDto.userEmail());
 
-        if (getUserDto.id() == -1L) {
+        if (getUserDto == null) {
             throw new RuntimeException("User service is unavailable, cannot create order.");
         }
 
@@ -82,9 +87,11 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional(readOnly = true)
-    public GetOrderDto getOrderById(Long id) {
+    public GetOrderDto getOrderById(Long id) throws AccessDeniedException {
         Order order = orderRepository.findById(id)
             .orElseThrow(() -> new EntityNotFoundException("Order not found: " + id));
+
+        checkAccess(order.getUserId());
 
         GetUserDto getUserDto = userClient.getUserById(order.getUserId());
 
@@ -153,12 +160,17 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public void deleteOrder(Long id) {
+    public void deleteOrder(Long id) throws AccessDeniedException {
         Order existingOrder = orderRepository.findById(id)
             .orElseThrow(() -> new EntityNotFoundException("Order not found: " + id));
-
-        userClient.getUserById(existingOrder.getUserId()); //проверка безопасности
-
+        checkAccess(existingOrder.getUserId());
         orderRepository.delete(existingOrder);
+    }
+
+    private void checkAccess(Long userId) throws AccessDeniedException {
+        Long currentUserId = securityHelper.getCurrentUserId();
+        if (!securityHelper.isAdmin() && !currentUserId.equals(userId)) {
+            throw new AccessDeniedException("You are not allowed to access this resource.");
+        }
     }
 }

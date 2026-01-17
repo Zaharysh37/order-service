@@ -5,8 +5,10 @@ import com.innowise.orderservice.api.dto.order.GetOrderDto;
 import com.innowise.orderservice.core.entity.Status;
 import com.innowise.orderservice.core.service.OrderService;
 import jakarta.validation.Valid;
+import java.nio.file.AccessDeniedException;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import lombok.SneakyThrows;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -43,7 +45,8 @@ public class OrderController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<GetOrderDto> getOrderById(@PathVariable Long id) {
+    public ResponseEntity<GetOrderDto> getOrderById(@PathVariable Long id)
+        throws AccessDeniedException {
         GetOrderDto order = orderService.getOrderById(id);
         return new ResponseEntity<>(order, HttpStatus.OK);
     }
@@ -73,7 +76,7 @@ public class OrderController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteOrder(@PathVariable Long id) {
+    public ResponseEntity<Void> deleteOrder(@PathVariable Long id) throws AccessDeniedException {
         orderService.deleteOrder(id);
         return new ResponseEntity<>(null, HttpStatus.NO_CONTENT);
     }
